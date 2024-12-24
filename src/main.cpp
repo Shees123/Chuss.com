@@ -395,11 +395,6 @@ int getSquareIndex(int x, int y, int squareSize) {
     return row * BOARD_SIZE + col;
 }
 
-void gitVersionControlTester(){
-    std::cout<<"This is bullshit"<<std::endl;
-    std::cout<<"This is another load of bullshit"<<std::endl;
-}
-
 int main(int argc, char* argv[]) {
     std::cout<<"This is a change to test git version control"<<std::endl;
     bool isDragging = false;
