@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Prerequisites
 *.d
 
@@ -30,3 +31,24 @@
 *.exe
 *.out
 *.app
+=======
+# Ignore executable and compiled files
+*.exe
+*.dll
+*.a
+*.la
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore SDL-related generated files
+sdl2-config
+
+# Ignore temporary or backup files
+*.tmp
+*.log
+
+# Ignore object and build files
+*.o
+*.out
+>>>>>>> 49ad911 (Add .gitignore and clean up tracking)
