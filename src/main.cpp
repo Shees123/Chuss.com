@@ -396,7 +396,6 @@ int getSquareIndex(int x, int y, int squareSize) {
 }
 
 int main(int argc, char* argv[]) {
-    std::cout<<"This is a change to test git version control"<<std::endl;
     bool isDragging = false;
     int draggedPiece = 0;
     int draggedFromSquare = -1;
