@@ -317,6 +317,10 @@ bool IsCheckmate() {
     return true;
 }
 
+void blablaTesting(){
+    std::cout<<"blabla testing"<<std::endl;
+}
+
 bool IsStalemate() {
     // Find the current player's king position
     int kingPosition = FindKingPosition();
