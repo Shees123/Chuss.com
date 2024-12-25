@@ -139,6 +139,20 @@ bool IsPathClear(int fromRow, int fromCol, int toRow, int toCol, Board& board) {
     return true;
 }
 
+bool IsKingInCheck(int kingPosition, Board& board) {
+    int opponentColor = (board.currentTurn == board.p.white) ? board.p.black : board.p.white;
+
+    for (int i = 0; i < 64; ++i) {
+        int piece = board.squares[i];
+        if ((piece & (board.p.white | board.p.black)) == opponentColor) {
+            if (IsValidMove(piece, i, kingPosition, board)) {
+                return true; // The king is under attack
+            }
+        }
+    }
+    return false;
+}
+
 bool IsValidMove(int piece, int from, int to, Board& board) {
     if (from == to) return false; // Can't move to the same square
 
@@ -164,10 +178,24 @@ bool IsValidMove(int piece, int from, int to, Board& board) {
                 if (deltaRow == -1 && deltaCol == 0 && board.squares[to] == board.p.none) return true; // Move forward
                 if (fromRow == 6 && deltaRow == -2 && deltaCol == 0 && board.squares[to] == board.p.none) return true; // Double move
                 if (deltaRow == -1 && abs(deltaCol) == 1 && board.squares[to] & board.p.black) return true; // Capture
+                // En Passant
+                if (deltaRow == -1 && abs(deltaCol) == 1 && board.squares[to] == board.p.none) {
+                    int capturedPawn = (to + BOARD_SIZE) % 64;
+                    if ((board.squares[capturedPawn] & 7) == 2 && (board.squares[capturedPawn] & (board.p.white | board.p.black)) == board.p.black) {
+                        return true;
+                    }
+                }
             } else { // Black pawn
                 if (deltaRow == 1 && deltaCol == 0 && board.squares[to] == board.p.none) return true; // Move forward
                 if (fromRow == 1 && deltaRow == 2 && deltaCol == 0 && board.squares[to] == board.p.none) return true; // Double move
                 if (deltaRow == 1 && abs(deltaCol) == 1 && board.squares[to] & board.p.white) return true; // Capture
+                // En Passant
+                if (deltaRow == 1 && abs(deltaCol) == 1 && board.squares[to] == board.p.none) {
+                    int capturedPawn = (to - BOARD_SIZE) % 64;
+                    if ((board.squares[capturedPawn] & 7) == 2 && (board.squares[capturedPawn] & (board.p.white | board.p.black)) == board.p.white) {
+                        return true;
+                    }
+                }
             }
             return false;
 
@@ -193,7 +221,22 @@ bool IsValidMove(int piece, int from, int to, Board& board) {
             return false;
 
         case 1: // King
-            return abs(deltaRow) <= 1 && abs(deltaCol) <= 1;
+            if (abs(deltaRow) <= 1 && abs(deltaCol) <= 1) return true; // Regular king move
+            // Castling
+            if (deltaRow == 0 && abs(deltaCol) == 2) {
+                int rookFrom = (deltaCol > 0) ? from + 3 : from - 4;
+                int rookTo = (deltaCol > 0) ? from + 1 : from - 1;
+                if ((board.squares[rookFrom] & 7) == 5 && IsPathClear(fromRow, fromCol, toRow, rookTo, board)) {
+                    // Ensure no squares the king passes through are under attack
+                    for (int col = fromCol; col != toCol; col += (deltaCol > 0 ? 1 : -1)) {
+                        if (IsKingInCheck(fromRow * BOARD_SIZE + col, board)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            }
+            return false;
 
         default:
             return false;
@@ -327,20 +370,6 @@ bool NeedsPromotion(int piece, int squareIndex, int boardSize, int currentTurn) 
     return false;
 }
 
-bool IsKingInCheck(int kingPosition, Board& board) {
-    int opponentColor = (board.currentTurn == board.p.white) ? board.p.black : board.p.white;
-
-    for (int i = 0; i < 64; ++i) {
-        int piece = board.squares[i];
-        if ((piece & (board.p.white | board.p.black)) == opponentColor) {
-            if (IsValidMove(piece, i, kingPosition, board)) {
-                return true; // The king is under attack
-            }
-        }
-    }
-    return false;
-}
-
 int FindKingPosition(Board& board) {
     int kingType = board.p.king | board.currentTurn;
     for (int i = 0; i < 64; ++i) {
@@ -352,42 +381,85 @@ int FindKingPosition(Board& board) {
 }
 
 bool IsCheckmate(Board& board) {
+    // Find the current player's king position
     int kingPosition = FindKingPosition(board);
-    if (kingPosition == -1) return false; // Invalid board state
-
-    if (!IsKingInCheck(kingPosition, board)) {
-        return false; // King is not in check
+    if (kingPosition == -1) {
+        std::cerr << "Error: King not found on the board." << std::endl;
+        return false;
     }
 
-    // Check if any valid move can get the king out of check
-    for (int from = 0; from < 64; ++from) {
-        if ((board.squares[from] & (board.p.white | board.p.black)) == board.currentTurn) {
-            for (int to = 0; to < 64; ++to) {
-                int piece = board.squares[from];
+    // If the king is not in check, it's not checkmate
+    if (!IsKingInCheck(kingPosition, board)) {
+        return false;
+    }
 
+    // Iterate over all pieces belonging to the current player
+    for (int from = 0; from < 64; ++from) {
+        int piece = board.squares[from];
+        if ((piece & (board.p.white | board.p.black)) == board.currentTurn) {
+
+            // Check all possible moves for this piece
+            for (int to = 0; to < 64; ++to) {
                 if (IsValidMove(piece, from, to, board)) {
+
                     // Temporarily make the move
                     int savedPiece = board.squares[to];
                     board.squares[to] = piece;
                     board.squares[from] = board.p.none;
 
-                    bool stillInCheck = IsKingInCheck(FindKingPosition(board), board);
+                    // Update king's position if the moved piece is the king
+                    int newKingPosition = (piece & 7) == board.p.king ? to : kingPosition;
+
+                    // Check if the king is still in check
+                    bool stillInCheck = IsKingInCheck(newKingPosition, board);
 
                     // Undo the move
                     board.squares[from] = piece;
                     board.squares[to] = savedPiece;
 
+                    // If the king is not in check after this move, it's not checkmate
                     if (!stillInCheck) {
-                        return false; // Found a valid move that gets out of check
+                        return false;
                     }
                 }
             }
         }
     }
 
-    return true; // No valid moves; the king is checkmated
+    // No valid moves found to get out of check
+    return true;
 }
 
+bool IsStalemate(Board& board) {
+    // Find the current player's king position
+    int kingPosition = FindKingPosition(board);
+    if (kingPosition == -1) {
+        std::cerr << "Error: King not found on the board." << std::endl;
+        return false;
+    }
+
+    // If the king is in check, it's not stalemate
+    if (IsKingInCheck(kingPosition, board)) {
+        return false;
+    }
+
+    // Iterate over all pieces belonging to the current player
+    for (int from = 0; from < 64; ++from) {
+        int piece = board.squares[from];
+        if ((piece & (board.p.white | board.p.black)) == board.currentTurn) {
+
+            // Check all possible moves for this piece
+            for (int to = 0; to < 64; ++to) {
+                if (IsValidMove(piece, from, to, board)) {
+                    return false; // Found a valid move
+                }
+            }
+        }
+    }
+
+    // No valid moves and the king is not in check
+    return true;
+}
 
 int getSquareIndex(int x, int y, int squareSize) {
     int col = x / squareSize;
