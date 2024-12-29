@@ -718,11 +718,11 @@ int main(int argc, char* argv[]) {
                                     board.squares[squareIndex] = promotedPiece | board.currentTurn; // Replace with promoted piece
                                 }
                             }
+                            boardStateList.AddState(board.GetFenFromPosition());  // Add the current state before the move                        
                             board.SwitchTurn();
                         } else {
                             board.squares[draggedFromSquare] = draggedPiece;
                         }
-                        boardStateList.AddState(board.GetFenFromPosition());  // Add the current state before the move                        
                         isDragging = false;
                         draggedFromSquare = -1;
                         std::string updatedFen = board.GetFenFromPosition();
