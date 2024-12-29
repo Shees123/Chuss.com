@@ -5,11 +5,97 @@
 #include <array>
 #include <algorithm>
 #include <vector>
+#include <cassert>
 
 const int WINDOW_WIDTH = 640;
 const int WINDOW_HEIGHT = 640;
 const int BOARD_SIZE = 8;
 const int TOTAL_SQUARES = BOARD_SIZE * BOARD_SIZE;
+
+class BoardStateList {
+private:
+    struct Node {
+        std::string fen;  // FEN string representing the board state
+        Node* prev;       // Pointer to the previous board state
+        Node* next;       // Pointer to the next board state
+
+        Node(const std::string& state) : fen(state), prev(nullptr), next(nullptr) {}
+    };
+
+    Node* head;    // Pointer to the head of the list (initial state)
+    Node* tail;    // Pointer to the tail (most recent state)
+    Node* current; // Pointer to the current state (used for undo/redo)
+
+public:
+    BoardStateList() : head(nullptr), tail(nullptr), current(nullptr) {}
+
+    // Add a new state to the list
+    void AddState(const std::string& state) {
+        Node* newNode = new Node(state);
+
+        if (!head) {  // If the list is empty
+            head = tail = current = newNode;
+        } else {
+            // Remove all forward states (clear redo) when adding new state
+            if (current && current->next) {
+                Node* temp = current->next;
+                while (temp) {
+                    Node* toDelete = temp;
+                    temp = temp->next;
+                    delete toDelete;
+                }
+                current->next = nullptr;
+                tail = current;
+            }
+
+            // Add the new state
+            current->next = newNode;
+            newNode->prev = current;
+            tail = newNode;
+            current = tail;
+        }
+    }
+
+    // Undo (move to the previous state)
+    bool Undo(std::string& state) {
+        if (current && current->prev) {
+            current = current->prev;  // Move to the previous state
+            state = current->fen;
+            return true;
+        }
+        return false;  // No previous state
+    }
+
+    // Redo (move to the next state)
+    bool Redo(std::string& state) {
+        if (current && current->next) {
+            current = current->next;  // Move to the next state
+            state = current->fen;
+            return true;
+        }
+        return false;  // No next state
+    }
+
+    // Get the current state
+    std::string GetCurrentState() const {
+        return (current) ? current->fen : "";
+    }
+
+    // Clear the list (reset the game)
+    void Clear() {
+        Node* temp = head;
+        while (temp) {
+            Node* toDelete = temp;
+            temp = temp->next;
+            delete toDelete;
+        }
+        head = tail = current = nullptr;
+    }
+
+    ~BoardStateList() {
+        Clear();
+    }
+};
 
 class Piece {
 public:
@@ -137,6 +223,18 @@ bool IsValidMove(int piece, int from, int to) {
     if (squares[to] != p.none && (squares[to] & (p.white | p.black)) == pieceColor) {
         return false;
     }
+
+    if (pieceType == p.king) {
+    int opponentColor = (pieceColor == p.white) ? p.black : p.white;
+    // Check if the target square is attacked by any opponent's piece
+    for (int i = 0; i < 64; ++i) {
+        if ((squares[i] & (p.white | p.black)) == opponentColor) {
+            if (IsValidMove(squares[i], i, to)) {
+                return false; // Target square is attacked
+            }
+        }
+    }
+}
 
     switch (pieceType) {
         case 2: // Pawn
@@ -268,44 +366,37 @@ int FindKingPosition() {
 }
 
 bool IsCheckmate() {
-    // Find the current player's king position
     int kingPosition = FindKingPosition();
     if (kingPosition == -1) {
         std::cerr << "Error: King not found on the board." << std::endl;
         return false;
     }
 
-    // If the king is not in check, it's not checkmate
     if (!IsKingInCheck(kingPosition)) {
+        std::cout << "King is not in check. Not checkmate." << std::endl;
         return false;
     }
 
-    // Iterate over all pieces belonging to the current player
     for (int from = 0; from < 64; ++from) {
         int piece = squares[from];
         if ((piece & (p.white | p.black)) == currentTurn) {
-
-            // Check all possible moves for this piece
             for (int to = 0; to < 64; ++to) {
                 if (IsValidMove(piece, from, to)) {
-
-                    // Temporarily make the move
+                    // Simulate move
                     int savedPiece = squares[to];
                     squares[to] = piece;
                     squares[from] = p.none;
 
-                    // Update king's position if the moved piece is the king
-                    int newKingPosition = (piece & 7) == p.king ? to : kingPosition;
-
                     // Check if the king is still in check
+                    int newKingPosition = (piece & 7) == p.king ? to : kingPosition;
                     bool stillInCheck = IsKingInCheck(newKingPosition);
 
                     // Undo the move
                     squares[from] = piece;
                     squares[to] = savedPiece;
 
-                    // If the king is not in check after this move, it's not checkmate
                     if (!stillInCheck) {
+                        std::cout << "Found a valid move from " << from << " to " << to << ". Not checkmate." << std::endl;
                         return false;
                     }
                 }
@@ -313,7 +404,7 @@ bool IsCheckmate() {
         }
     }
 
-    // No valid moves found to get out of check
+    std::cout << "No valid moves found. Checkmate!" << std::endl;
     return true;
 }
 
@@ -360,6 +451,40 @@ int getSquareIndex(int x, int y, int squareSize) {
 
 };
 
+
+void RunCheckmateTests(Board& board) {
+    struct TestCase {
+        std::string description;
+        std::string fen;
+        bool expectedCheckmate;
+        bool expectedStalemate;
+    };
+
+    std::vector<TestCase> testCases = {
+        {"Simple Checkmate: Black King Cornered", 
+         "6k1/5ppp/8/8/8/8/7Q/7K w - - 0 1", true, false},
+        {"Back-Rank Checkmate: Rook Mate", 
+         "7k/5ppp/8/8/8/8/6RR/7K w - - 0 1", true, false},
+        {"Smothered Mate: Knight", 
+         "6k1/8/8/8/8/8/5N1P/6K1 w - - 0 1", true, false},
+        {"Stalemate: King Has No Moves", 
+         "7k/5ppp/8/8/8/8/7Q/7K w - - 0 1", false, true},
+        {"King Has Escape Square", 
+         "8/8/8/8/8/5k2/4R3/7K w - - 0 1", false, false}
+    };
+
+    for (const auto& test : testCases) {
+        board.LoadPositionFromFen(test.fen);
+        bool isCheckmate = board.IsCheckmate();
+        bool isStalemate = board.IsStalemate();
+
+        std::cout << "Test: " << test.description << "\n";
+        std::cout << "FEN: " << test.fen << "\n";
+        std::cout << "Expected Checkmate: " << test.expectedCheckmate << ", Actual: " << isCheckmate << "\n";
+        std::cout << "Expected Stalemate: " << test.expectedStalemate << ", Actual: " << isStalemate << "\n";
+        std::cout << (isCheckmate == test.expectedCheckmate && isStalemate == test.expectedStalemate ? "PASS" : "FAIL") << "\n\n";
+    }
+}
 
 void drawChessboard(SDL_Renderer* renderer, const std::vector<int>& validMoves, int pickedSquare = -1) {
     int squareSize = WINDOW_WIDTH / BOARD_SIZE;
@@ -534,10 +659,14 @@ int main(int argc, char* argv[]) {
     }
 
     Board board;
+    BoardStateList boardStateList;
+    boardStateList.AddState(board.GetFenFromPosition());
 
     bool running = true;
     SDL_Event event;
     int squareSize = WINDOW_WIDTH / BOARD_SIZE;
+
+    // RunCheckmateTests(board);
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -589,11 +718,11 @@ int main(int argc, char* argv[]) {
                                     board.squares[squareIndex] = promotedPiece | board.currentTurn; // Replace with promoted piece
                                 }
                             }
-
                             board.SwitchTurn();
                         } else {
                             board.squares[draggedFromSquare] = draggedPiece;
                         }
+                        boardStateList.AddState(board.GetFenFromPosition());  // Add the current state before the move                        
                         isDragging = false;
                         draggedFromSquare = -1;
                         std::string updatedFen = board.GetFenFromPosition();
@@ -608,12 +737,31 @@ int main(int argc, char* argv[]) {
                     }
                     break;
                 case SDL_KEYDOWN:
-                if (event.key.keysym.sym == SDLK_l) { // Press 'L' to load a custom FEN
-                    std::string customFen = "6k1/5ppp/8/8/8/5Q2/6PP/6K1 w - - 0 1";
-                    board.LoadPositionFromFen(customFen);
-                    std::cout << "Loaded FEN: " << customFen << std::endl;
-                }
-                break;
+                    if (event.key.keysym.sym == SDLK_l) { // Press 'L' to load a custom FEN
+                        std::string customFen = "6k1/5ppp/8/8/8/5Q2/6PP/6K1 w - - 0 1";
+                        board.LoadPositionFromFen(customFen);
+                        std::cout << "Loaded FEN: " << customFen << std::endl;
+                    }
+                    std::string previousState;
+                    if (event.key.keysym.sym == SDLK_u) {  // Press 'U' to undo
+                        std::string previousState;
+                        if (boardStateList.Undo(previousState)) {
+                            board.LoadPositionFromFen(previousState);
+                            board.SwitchTurn();  // Switch turn after undo
+                        } else {
+                            std::cout << "Nothing to undo!" << std::endl;
+                        }
+                    }
+                    if (event.key.keysym.sym == SDLK_r) {  // Press 'R' to redo
+                        std::string nextState;
+                        if (boardStateList.Redo(nextState)) {
+                            board.LoadPositionFromFen(nextState);
+                            board.SwitchTurn();  // Switch turn after redo
+                        } else {
+                            std::cout << "Nothing to redo!" << std::endl;
+                        }
+                    }
+                    break;
             }
         }
 
