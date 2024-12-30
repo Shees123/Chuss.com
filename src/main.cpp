@@ -7,10 +7,16 @@
 #include <vector>
 #include <cassert>
 
-const int WINDOW_WIDTH = 640;
+const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 640;
+const int BOARD_WIDTH = 640;
+const int BOARD_HEIGHT = 640;
 const int BOARD_SIZE = 8;
 const int TOTAL_SQUARES = BOARD_SIZE * BOARD_SIZE;
+int squareSize = BOARD_WIDTH / BOARD_SIZE;
+int boardX = (WINDOW_WIDTH - BOARD_WIDTH) / 2;
+int boardY = 0;
+
 
 class BoardStateList {
 private:
@@ -444,6 +450,13 @@ bool IsStalemate() {
 }
 
 int getSquareIndex(int x, int y, int squareSize) {
+    x -= boardX;
+    y -= boardY;
+
+    if (x < 0 || y < 0 || x >= squareSize * BOARD_SIZE || y >= squareSize * BOARD_SIZE) {
+        return -1; // Invalid click (outside the board area)
+    }
+
     int col = x / squareSize;
     int row = y / squareSize;
     return row * BOARD_SIZE + col;
@@ -487,8 +500,6 @@ void RunCheckmateTests(Board& board) {
 }
 
 void drawChessboard(SDL_Renderer* renderer, const std::vector<int>& validMoves, int pickedSquare = -1) {
-    int squareSize = WINDOW_WIDTH / BOARD_SIZE;
-
     // Colors
     SDL_Color lightSquareColor = {240, 217, 181, 255}; // Original light square
     SDL_Color darkSquareColor = {181, 136, 99, 255};  // Original dark square
@@ -517,10 +528,14 @@ void drawChessboard(SDL_Renderer* renderer, const std::vector<int>& validMoves, 
                 SDL_SetRenderDrawColor(renderer, baseColor.r, baseColor.g, baseColor.b, baseColor.a);
             }
 
+            // Calculate square position
+            int x = boardX + col * squareSize;  // Center horizontally
+            int y = boardY + row * squareSize;  // Keep vertically aligned
+
             // Render the square
             SDL_Rect square = {
-                col * squareSize,
-                row * squareSize,
+                x,
+                y,
                 squareSize,
                 squareSize
             };
@@ -532,8 +547,6 @@ void drawChessboard(SDL_Renderer* renderer, const std::vector<int>& validMoves, 
 
 
 void drawPieces(SDL_Renderer* renderer, Board& board, std::unordered_map<int, SDL_Texture*>& textures) {
-    int squareSize = WINDOW_WIDTH / BOARD_SIZE;
-
     for (int i = 0; i < 64; ++i) {
         int piece = board.squares[i];
         if (piece == 0) continue; 
@@ -541,7 +554,11 @@ void drawPieces(SDL_Renderer* renderer, Board& board, std::unordered_map<int, SD
         int row = i / BOARD_SIZE;
         int col = i % BOARD_SIZE;
 
-        SDL_Rect dstRect = {col * squareSize, row * squareSize, squareSize, squareSize};
+        // Calculate square position
+        int x = boardX + col * squareSize;  // Center horizontally
+        int y = boardY + row * squareSize;  // Keep vertically aligned
+
+        SDL_Rect dstRect = {x, y, squareSize, squareSize};
 
         if (textures.count(piece)) {
             SDL_RenderCopy(renderer, textures[piece], nullptr, &dstRect);
@@ -664,7 +681,7 @@ int main(int argc, char* argv[]) {
 
     bool running = true;
     SDL_Event event;
-    int squareSize = WINDOW_WIDTH / BOARD_SIZE;
+    int squareSize = BOARD_WIDTH / BOARD_SIZE;
 
     // RunCheckmateTests(board);
 
@@ -678,7 +695,11 @@ int main(int argc, char* argv[]) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         int squareIndex = board.getSquareIndex(event.button.x, event.button.y, squareSize);
                         int piece = board.squares[squareIndex];
-                        if (piece != board.p.none && (piece & (board.p.white | board.p.black)) == board.currentTurn) {
+
+                        if (squareIndex != -1) {
+                            // Handle piece selection or move
+                            std::cout << "Square clicked: " << squareIndex << std::endl;
+                            if (piece != board.p.none && (piece & (board.p.white | board.p.black)) == board.currentTurn) {
                             isDragging = true;
                             draggedFromSquare = squareIndex;
                             draggedPiece = board.squares[squareIndex];
@@ -694,6 +715,10 @@ int main(int argc, char* argv[]) {
                                 }
                             }
                         }
+                        } else {
+                            std::cout << "Click outside the board!" << std::endl;
+                        }
+                        
                     }
                     break;
                 case SDL_MOUSEBUTTONUP:
@@ -765,7 +790,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_SetRenderDrawColor(renderer, 48, 46, 43, 255);
         SDL_RenderClear(renderer);
 
         drawChessboard(renderer, p.validMoves, draggedFromSquare);
