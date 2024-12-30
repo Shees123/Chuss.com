@@ -8,6 +8,7 @@
 #include <vector>
 #include <cassert>
 
+bool isAtLatestState = true;
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 640;
 const int BOARD_WIDTH = 640;
@@ -34,7 +35,7 @@ private:
     Node* current; // Pointer to the current state (used for undo/redo)
 
 public:
-    BoardStateList() : head(nullptr), tail(nullptr), current(nullptr) {}
+    BoardStateList() : head(nullptr), tail(nullptr), current(nullptr){}
 
     // Add a new state to the list
     void AddState(const std::string& state) {
@@ -65,6 +66,8 @@ public:
 
     // Undo (move to the previous state)
     bool Undo(std::string& state) {
+        isAtLatestState = false;
+        std::cout<<"is latest state: "<<isAtLatestState<<std::endl;
         if (current && current->prev) {
             current = current->prev;  // Move to the previous state
             state = current->fen;
@@ -75,6 +78,10 @@ public:
 
     // Redo (move to the next state)
     bool Redo(std::string& state) {
+        if(tail->prev->fen == current->fen){
+            isAtLatestState = true;
+            std::cout<<"is latest state: "<<isAtLatestState<<std::endl;
+        }
         if (current && current->next) {
             current = current->next;  // Move to the next state
             state = current->fen;
@@ -208,8 +215,6 @@ public:
 
 void SwitchTurn() {
         currentTurn = (currentTurn == p.white) ? p.black : p.white;
-        std::string playerTurn = (currentTurn == p.white) ? "White's Turn" : "Black's Turn";
-        std::cout<<playerTurn<<std::endl;
     }
 
 bool IsValidMove(int piece, int from, int to) {
@@ -347,7 +352,7 @@ bool IsKingInCheck(int kingPosition) {
 
 bool NeedsPromotion(int piece, int squareIndex, int boardSize, int currentTurn) {
     // Check if the piece is a pawn
-    const int pawnType = 2; // Corresponding to `Piece::pawn`
+    const int pawnType = 2; // Corresponding to `p.pawn`
     Piece p;
     if ((piece & 7) != pawnType) {
         return false; // Not a pawn
@@ -380,7 +385,7 @@ bool IsCheckmate() {
     }
 
     if (!IsKingInCheck(kingPosition)) {
-        std::cout << "King is not in check. Not checkmate." << std::endl;
+        // std::cout << "King is not in check. Not checkmate." << std::endl;
         return false;
     }
 
@@ -413,10 +418,6 @@ bool IsCheckmate() {
 
     std::cout << "No valid moves found. Checkmate!" << std::endl;
     return true;
-}
-
-void blablaTesting(){
-    std::cout<<"blabla testing"<<std::endl;
 }
 
 bool IsStalemate() {
@@ -722,6 +723,7 @@ int main(int argc, char* argv[]) {
 
 
     Piece p;
+    BoardStateList state;
     std::unordered_map<int, SDL_Texture*> textures;
     
     textures[p.white | p.king] = IMG_LoadTexture(renderer, "res/Pieces/w_king_2x.png");
@@ -751,8 +753,8 @@ int main(int argc, char* argv[]) {
     bool running = true;
     SDL_Event event;
     int squareSize = BOARD_WIDTH / BOARD_SIZE;
-
-    // RunCheckmateTests(board);
+    int startSquare = -1; // Stores the index of the starting square
+    int endSquare = -1;   // Stores the index of the ending square
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -762,13 +764,10 @@ int main(int argc, char* argv[]) {
                     break;
                 case SDL_MOUSEBUTTONDOWN:
                     if (event.button.button == SDL_BUTTON_LEFT) {
-                        int squareIndex = board.getSquareIndex(event.button.x, event.button.y, squareSize);
+                        int squareIndex = startSquare = board.getSquareIndex(event.button.x, event.button.y, squareSize);
                         int piece = board.squares[squareIndex];
-
-                        if (squareIndex != -1) {
-                            // Handle piece selection or move
-                            std::cout << "Square clicked: " << squareIndex << std::endl;
-                            if (piece != board.p.none && (piece & (board.p.white | board.p.black)) == board.currentTurn) {
+                        std::cout<<"is latest state A: "<<isAtLatestState<<std::endl;
+                            if (piece != board.p.none && (piece & (board.p.white | board.p.black)) == board.currentTurn && isAtLatestState) {
                             isDragging = true;
                             draggedFromSquare = squareIndex;
                             draggedPiece = board.squares[squareIndex];
@@ -784,25 +783,21 @@ int main(int argc, char* argv[]) {
                                 }
                             }
                         }
-                        } else {
-                            std::cout << "Click outside the board!" << std::endl;
-                        }
+                        std::cout<<"is latest state B: "<<isAtLatestState<<std::endl;
                         
                     }
                     break;
                 case SDL_MOUSEBUTTONUP:
                     if (event.button.button == SDL_BUTTON_LEFT && isDragging) {
-                        int squareIndex = board.getSquareIndex(event.button.x, event.button.y, squareSize);
+                        int squareIndex = endSquare = board.getSquareIndex(event.button.x, event.button.y, squareSize);
                         if (board.IsValidMove(draggedPiece, draggedFromSquare, squareIndex)) {
                             board.squares[squareIndex] = draggedPiece;
 
                             int movedPiece = board.squares[squareIndex]; // Piece after move
-
                             if (board.IsCheckmate()) {
                                 std::string winner = (board.currentTurn == board.p.white) ? "Black" : "White";
                                 std::cout << "Checkmate! " << winner << " wins!" << std::endl;
                                 running = false; // End the game
-                                break;
                             }
 
                             if (board.NeedsPromotion(movedPiece, squareIndex, BOARD_SIZE, board.currentTurn)) {
@@ -819,8 +814,10 @@ int main(int argc, char* argv[]) {
                         }
                         isDragging = false;
                         draggedFromSquare = -1;
-                        std::string updatedFen = board.GetFenFromPosition();
-                        std::cout << "Updated FEN: " << updatedFen << std::endl;
+                        // if(startSquare != endSquare){
+                        //     std::string updatedFen = board.GetFenFromPosition();
+                        //     std::cout << "Updated FEN: " << updatedFen << std::endl;
+                        // }
                     }
                     p.validMoves.clear();
                     break;
@@ -841,7 +838,6 @@ int main(int argc, char* argv[]) {
                         std::string previousState;
                         if (boardStateList.Undo(previousState)) {
                             board.LoadPositionFromFen(previousState);
-                            board.SwitchTurn();  // Switch turn after undo
                         } else {
                             std::cout << "Nothing to undo!" << std::endl;
                         }
@@ -850,7 +846,6 @@ int main(int argc, char* argv[]) {
                         std::string nextState;
                         if (boardStateList.Redo(nextState)) {
                             board.LoadPositionFromFen(nextState);
-                            board.SwitchTurn();  // Switch turn after redo
                         } else {
                             std::cout << "Nothing to redo!" << std::endl;
                         }
