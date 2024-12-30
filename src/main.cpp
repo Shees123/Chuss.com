@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <sdl2/SDL_ttf.h>
 #include <iostream>
 #include <unordered_map>
 #include <array>
@@ -612,6 +613,61 @@ int showPromotionDialog(SDL_Renderer* renderer, std::unordered_map<int, SDL_Text
     }
 }
 
+void drawRoundedSquare(SDL_Renderer* renderer) {
+    // Set color for the rounded square
+    SDL_Color squareColor = {100, 100, 100, 255}; // Example color (gray)
+
+    // Position and size of the rounded square
+    int roundedSquareX = boardX + BOARD_WIDTH + 50; // To the right of the chessboard
+    int roundedSquareY = boardY + 100;            // Some distance below the top of the window
+    int roundedSquareWidth = 200;                 // Width of the square
+    int roundedSquareHeight = 200;                // Height of the square
+    int cornerRadius = 20;                        // Radius of the rounded corners
+
+    // Set the draw color
+    SDL_SetRenderDrawColor(renderer, squareColor.r, squareColor.g, squareColor.b, squareColor.a);
+
+    // Draw the center rectangle
+    SDL_Rect centerRect = {roundedSquareX + cornerRadius, roundedSquareY + cornerRadius, roundedSquareWidth - 2 * cornerRadius, roundedSquareHeight - 2 * cornerRadius};
+    SDL_RenderFillRect(renderer, &centerRect);
+
+    // Draw top and bottom rectangles
+    SDL_Rect topRect = {roundedSquareX + cornerRadius, roundedSquareY, roundedSquareWidth - 2 * cornerRadius, cornerRadius};
+    SDL_Rect bottomRect = {roundedSquareX + cornerRadius, roundedSquareY + roundedSquareHeight - cornerRadius, roundedSquareWidth - 2 * cornerRadius, cornerRadius};
+    SDL_RenderFillRect(renderer, &topRect);
+    SDL_RenderFillRect(renderer, &bottomRect);
+
+    // Draw left and right rectangles
+    SDL_Rect leftRect = {roundedSquareX, roundedSquareY + cornerRadius, cornerRadius, roundedSquareHeight - 2 * cornerRadius};
+    SDL_Rect rightRect = {roundedSquareX + roundedSquareWidth - cornerRadius, roundedSquareY + cornerRadius, cornerRadius, roundedSquareHeight - 2 * cornerRadius};
+    SDL_RenderFillRect(renderer, &leftRect);
+    SDL_RenderFillRect(renderer, &rightRect);
+
+    // Optionally, draw the corners using circles (if needed)
+}
+
+void renderText(SDL_Renderer* renderer, TTF_Font* font, const char* text, int x, int y, SDL_Color color) {
+    SDL_Surface* surface = TTF_RenderText_Blended(font, text, color);
+    if (!surface) {
+        std::cerr << "Failed to create text surface: " << TTF_GetError() << std::endl;
+        return;
+    }
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    if (!texture) {
+        std::cerr << "Failed to create text texture: " << SDL_GetError() << std::endl;
+        SDL_FreeSurface(surface);
+        return;
+    }
+
+    SDL_Rect textRect = {x, y, surface->w, surface->h};
+    SDL_RenderCopy(renderer, texture, nullptr, &textRect);
+
+    SDL_FreeSurface(surface);
+    SDL_DestroyTexture(texture);
+}
+
+
 int main(int argc, char* argv[]) {
     bool isDragging = false;
     int draggedPiece = 0;
@@ -651,6 +707,19 @@ int main(int argc, char* argv[]) {
         SDL_Quit();
         return -1;
     }
+
+    if (TTF_Init() == -1) {
+    std::cerr << "Failed to initialize SDL_ttf: " << TTF_GetError() << std::endl;
+    return -1;
+    }
+
+
+    TTF_Font* font = TTF_OpenFont("fonts/arial.ttf", 24); // Font size 24
+    if (!font) {
+        std::cerr << "Failed to load font: " << TTF_GetError() << std::endl;
+        return -1;
+    }
+
 
     Piece p;
     std::unordered_map<int, SDL_Texture*> textures;
@@ -796,6 +865,14 @@ int main(int argc, char* argv[]) {
         drawChessboard(renderer, p.validMoves, draggedFromSquare);
         drawPieces(renderer, board, textures);
 
+        bool isWhiteTurn = true; // Track whose turn it is
+
+        // Inside the render loop
+        SDL_Color textColor = {255, 255, 255, 255}; // White color for text
+        const char* turnText = (board.currentTurn == p.white) ? "White's Turn" : "Black's Turn";
+        renderText(renderer, font, turnText, 50, 100, textColor); // Display text at (50, 100)
+
+
         if (isDragging) {
             SDL_Rect dstRect = {mouseX - squareSize / 2, mouseY - squareSize / 2, squareSize, squareSize};
             SDL_RenderCopy(renderer, textures[draggedPiece], nullptr, &dstRect);
@@ -809,6 +886,8 @@ int main(int argc, char* argv[]) {
     }
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    TTF_CloseFont(font);
+    TTF_Quit();
     IMG_Quit();
     SDL_Quit();
 
